@@ -8,8 +8,12 @@ output: html_document
 ```{r setup, include=FALSE}
 library(tidyverse)
 library(tidycensus)
+library(leaflet)
+library(sf)
 
 census_api_key("c458095036ca1037f97b9c7019b6a7ac2dbf90d4")
+
+v17 <- load_variables(2017, "acs5", cache = TRUE)
 
 knitr::opts_chunk$set(echo = TRUE)
 ```
@@ -18,5 +22,38 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r read}
 
+df <- get_acs(geography="tract",
+              state="TX",
+              county="Harris County",
+              variables=c(Pop="B01003_001"),
+              year=2010)
+
+df2 <- get_acs(geography="tract",
+              state="TX",
+              county="Harris County",
+              variables=c(Pop="B01003_001"),
+              geometry=TRUE,
+              year=2019)
+
+df3 <- left_join(df, df2, by="GEOID") %>% 
+  select(GEOID, Pop_10=estimate.x, Pop_19=estimate.y, geometry) %>% 
+  mutate(Pct_chg=100*(Pop_19-Pop_10)/Pop_10)
+
 ```
+
+##   Make a map
+
+```{r map}
+
+df3 %>% 
+  filter(Pct_chg<100) %>% 
+  filter(Pop_10>500) %>% 
+  ggplot(aes(fill = Pct_chg, geometry=geometry)) +
+  geom_sf(color = NA) +
+  coord_sf(crs = 26915) + # Appropriate CRS for Houston, but may not be for your data
+  scale_fill_viridis_c()
+
+
+```
+
 
