@@ -5,26 +5,109 @@ date: "9/23/2021"
 output: html_document
 ---
 
+
 ```{r setup, include=FALSE}
+library(tidyverse)
+library(tidycensus)
+library(leaflet)
+library(sf)
+
+census_api_key("c458095036ca1037f97b9c7019b6a7ac2dbf90d4")
+
+googlecrs <- 4326
+
+v17 <- load_variables(2017, "acs5", cache = TRUE)
+
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
+##  Read in some data
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+```{r read}
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+df <- get_acs(geography="tract",
+              state="TX",
+              county="Harris County",
+              variables=c(Pop="B01003_001"),
+              year=2010)
 
-```{r cars}
-summary(cars)
+df2 <- get_acs(geography="tract",
+              state="TX",
+              county="Harris County",
+              variables=c(Pop="B01003_001"),
+              geometry=TRUE,
+              year=2019)
+
+df3 <- left_join(df, df2, by="GEOID") %>% 
+  select(GEOID, Pop_10=estimate.x, Pop_19=estimate.y, geometry) %>% 
+  mutate(Pct_chg=signif(100*(Pop_19-Pop_10)/Pop_10,0)) %>% 
+  mutate(Diff=Pop_19-Pop_10)
+
+df3 <- st_sf(df3)
 ```
 
-## Including Plots
+##   Make a map
 
-You can also embed plots, for example:
+```{r map}
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+
+df3 %>% 
+  filter(Diff<10000) %>% 
+  filter(Pop_10>500) %>% 
+  ggplot(aes(fill = Diff, geometry=geometry)) +
+  geom_sf(color = NA) +
+  coord_sf(crs = 26915) + # Appropriate CRS for Houston, but may not be for your data
+  scale_fill_viridis_c()
+
+#   Leaflet
+
+#df3 <- df3 %>% 
+#  filter(Diff<10000) %>% 
+#  filter(Pop_10>500) 
+
+#df3 <- st_sf(df3)
+#st_crs(df3) <- googlecrs
+#df3 <- st_transform(df3, 26915)
+
+color_values <- c("#543005", "#8c510a", "#bf812d", "#dfc27d",
+                  "#e0e0e0",
+                  "#80cdc1", "#35978f", "#01665e", "#003c30")
+
+
+bins <- c(-Inf, -100, -50, -20, -5, 5, 20, 50, 100, Inf)
+#pal <- colorBin("YlOrRd", domain = df3$Pct_chg, bins = bins) 
+pal <- colorBin(color_values, domain = df3$Pct_chg, bins = bins) 
+
+labels <- sprintf(
+  "<strong>%g Pct Diff</strong><br/>%g to %g",
+  df3$Pct_chg, df3$Pop_10, df3$Pop_19
+) %>% lapply(htmltools::HTML)
+
+#df3$Num <- as_factor(df3$n)
+
+#pal <- colorFactor(
+#  #palette = c("#fecc5c", "#bd0026"),
+#  palette = "Blues",
+#  domain = solarCensus$Num)
+
+leaflet(df3) %>% 
+  setView(lng = -95.362306, lat = 29.756931, zoom = 12) %>% 
+  addTiles() %>%
+  addPolygons(
+    fillColor = ~pal(Pct_chg),
+    weight = 1,
+    opacity = 1,
+    color = "white",
+    dashArray = "3",
+    fillOpacity = 0.7,
+    label = labels,
+    labelOptions = labelOptions(
+      style = list("font-weight" = "normal", padding = "3px 8px"),
+      textsize = "15px",
+      direction = "auto")) %>% 
+ addLegend("bottomleft", pal = pal, values = ~Pct_chg,
+    title = "% Pop change",
+    opacity = 1
+  )
+
 ```
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
