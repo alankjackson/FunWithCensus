@@ -40,7 +40,7 @@ df2 <- get_acs(geography="tract",
 
 df3 <- left_join(df, df2, by="GEOID") %>% 
   select(GEOID, Pop_10=estimate.x, Pop_19=estimate.y, geometry) %>% 
-  mutate(Pct_chg=signif(100*(Pop_19-Pop_10)/Pop_10,0)) %>% 
+  mutate(Pct_chg=signif(100*(Pop_19-Pop_10)/Pop_10,2)) %>% 
   mutate(Diff=Pop_19-Pop_10)
 
 df3 <- st_sf(df3)
@@ -111,3 +111,66 @@ leaflet(df3) %>%
   )
 
 ```
+
+##  Let's look for some correlations
+
+```{r correlate}
+
+df3 <-
+  df3 %>% 
+  mutate(Area=st_area(.)*3.86102e-7)  
+
+df3 %>% 
+  filter(Pct_chg<200) %>% 
+  mutate(Density=Pop_10/as.numeric(Area)) %>% 
+  ggplot(aes(y=Pct_chg, x=Density)) +
+  geom_point() +
+  labs(x="Population density in 2010 (People per sq-mi)",
+       y="Percent change in Population from 2010 to 2019",
+       title="Harris County, Population Changes versus Density")
+
+#   center of town
+
+lonlat <- c(-95.36937160981316, 29.760228863120755) # City Hall
+CityHall <- st_point(lonlat, "XY")
+CityHall <- st_sfc(CityHall)
+st_crs(CityHall) <- st_crs(df3)
+
+df3 <- df3 %>% 
+  mutate(Dist_downtown=st_distance(df3, CityHall))
+
+df3 %>% 
+  filter(Pct_chg<200) %>% 
+  mutate(Dist_downtown=as.numeric(Dist_downtown)/1609.34) %>% 
+  ggplot(aes(y=Pct_chg, x=Dist_downtown, weight=Pop_10)) +
+  #ggplot(aes(y=Pct_chg, x=Dist_downtown)) +
+  geom_point() +
+  geom_smooth(method="lm")+
+  labs(x="Distance from Downtown (mi)",
+       y="Percent change in Population from 2010 to 2019",
+       title="Harris County, Population Changes versus Distance from Downtown")
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
